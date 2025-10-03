@@ -25,14 +25,23 @@ A comprehensive guide to understanding, profiling, and optimizing CUDA kernels i
 * Every PyTorch operation that uses the GPU (`matmul`, `conv2d`, etc.) executes as one or more CUDA kernels
 * Example: `y = x @ w` on GPU internally calls a matrix multiplication kernel implemented in CUDA
 
+
+---
+
 ### CUDA Execution Model
 
-Before profiling, understand the mental model:
+Understanding how PyTorch interacts with CUDA is key to effective profiling:
 
-* PyTorch ops on GPU → launch **CUDA kernels** asynchronously
-* CPU schedules work → GPU executes in parallel
-* Multiple CUDA streams can run in parallel (default: `torch.cuda.default_stream()`)
-* Profiling shows **CPU time**, **CUDA time**, and **synchronization overhead**
+* **CPU schedules, GPU executes:** Every PyTorch operation starts on the **CPU**. The CPU decides which backend to use (CPU kernel or CUDA kernel) based on the device of the input tensors, checks shapes, types, and broadcasting rules, then **launches the corresponding CUDA kernel** on the GPU.
+* **Why not directly on GPU:** The GPU cannot execute Python code, interpret tensor shapes, or handle complex scheduling logic. It only runs compiled kernels. The CPU acts as the **controller**, orchestrating which kernels to launch, which streams to use, and handling fallback or mixed-device cases.
+* **Asynchronous execution:** Kernel launches on the GPU are **non-blocking** for the CPU. This allows the CPU to continue scheduling more operations while the GPU executes in parallel.
+* **GPU as a worker:** The GPU simply executes the kernels enqueued by the CPU across thousands of threads.
+* **Synchronization points:** The CPU only waits for GPU results when necessary (e.g., `.cpu()`, `.item()`, or explicit `torch.cuda.synchronize()`). Until then, GPU operations run independently.
+* **Multiple CUDA streams:** PyTorch can execute kernels on multiple streams in parallel (default is `torch.cuda.default_stream()`), enabling overlapping computation and memory transfers.
+* **Profiling perspective:** Tools like `torch.profiler` show **CPU scheduling time**, **CUDA execution time**, and **synchronization overhead**, helping identify bottlenecks and optimize performance.
+
+**Analogy:** The CPU is the **chef**, orchestrating the recipe and delegating tasks, while the GPU is the **kitchen staff**, executing instructions in parallel at high speed.
+
 
 ---
 
@@ -236,7 +245,7 @@ When training/serving large language models, focus on:
 
 ---
 
-## Triton Integration
+## Triton 
 
 ### Installation
 
@@ -304,40 +313,6 @@ with profiler.profile(
 
 print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 ```
-
-### Triton Learning Path
-
-1. **Start small**: Fuse 1-2 operations first
-2. **Progress gradually**: Build attention or matrix multiplication kernels
-3. **Use profiling**: PyTorch profiler + TensorBoard for timeline analysis
-4. **Optimize parameters**: Adjust block size (1024 in example) for better utilization
-5. **Advanced kernels**: Implement FlashAttention-style kernels for real LLM optimization
-
----
-
-## Mastery Checklist
-
-### Core Skills
-- [ ] Understand PyTorch Profiler (`torch.profiler`)
-- [ ] Master TensorBoard timeline visualization
-- [ ] Identify kernel bottlenecks (slow ops, excessive small ops)
-- [ ] Spot synchronization points (`.item()`, `.cpu()`)
-- [ ] Analyze GPU idle times (data pipeline issues, small batches)
-
-### Advanced Skills
-- [ ] Use Nsight Systems + Nsight Compute for deep analysis
-- [ ] Profile LLM-critical kernels (matmul, attention, norm, NCCL)
-- [ ] Write and profile custom Triton kernels
-- [ ] Optimize memory bandwidth utilization
-- [ ] Implement kernel fusion strategies
-
-### LLM-Specific Skills
-- [ ] Profile attention mechanisms (FlashAttention vs standard)
-- [ ] Optimize distributed training communication
-- [ ] Analyze mixed precision performance
-- [ ] Debug memory allocation patterns
-- [ ] Implement custom fused operations
-
 ---
 
 ## Summary
